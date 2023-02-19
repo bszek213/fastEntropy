@@ -83,7 +83,7 @@ double SampleEntropy_old(const std::vector<double>& data, int m, double r)
   
 }
 
-double sampleEntropy(const std::vector<double>& data, int m, double r){
+double sampleEntropy_new(const std::vector<double>& data, int m, double r){
     //multiply r by the std
     double sd = StandardDeviation(data);
     double err = sd * r;
