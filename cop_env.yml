@@ -1,0 +1,21 @@
+name: fastEntropy
+channels:
+  - anaconda
+  - conda-forge
+  - omnia
+  - plotly
+dependencies:
+  - python==3.9
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - jupyter
+  - ipython
+  - tqdm
+  - seaborn
+  - pandas
+  - pip
+  - pip:
+    - wfdb
+
