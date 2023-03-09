@@ -24,12 +24,105 @@ double shannonEntropy(const std::vector<double>& data){
     return entropy;
 }
 
-double MSE(const std::vector<double>& data){
-    return 0;
-}
+double MSE(std::vector<double>& x, int m, double r, int tau, double& e, int& A, int& B){
+    // Coarse signal
+    std::vector<double> y;
+    for (int i = 0; i < x.size(); i += tau) {
+        double sum = 0.0;
+        for (int j = i; j < std::min(i + tau, (int)x.size()); j++) {
+            sum += x[j];
+        }
+        y.push_back(sum / (double)tau);
+    }
 
-double approximateEntropy(const std::vector<double>& data, int m, float r){
-    return 0;
+    // (m+1)-element sequences
+    std::vector<std::vector<double>> X;
+    for (int i = 0; i < y.size() - m - 1; i++) {
+        std::vector<double> tmp;
+        for (int j = i; j < i + m + 1; j++) {
+            tmp.push_back(y[j]);
+        }
+        X.push_back(tmp);
+    }
+
+    // Matching (m+1)-element sequences
+    A = 0;
+    double stdev = StandardDeviation(x);
+    for (int i = 0; i < X.size(); i++) {
+        for (int j = i + 1; j < X.size(); j++) {
+            bool match = true;
+            for (int k = 0; k < m + 1; k++) {
+                if (std::abs(X[i][k] - X[j][k]) > r * stdev) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                A++;
+            }
+        }
+    }
+
+    // Matching m-element sequences
+    X.erase(X.begin() + m + 1, X.end());
+    B = 0;
+    for (int i = 0; i < X.size(); i++) {
+        for (int j = i + 1; j < X.size(); j++) {
+            bool match = true;
+            for (int k = 0; k < m; k++) {
+                if (std::abs(X[i][k] - X[j][k]) > r * stdev) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                B++;
+            }
+        }
+    }
+
+    // Take log
+    if (A == 0 || B == 0) {
+        e = NAN;
+    } else {
+        e = std::log(B / (double)A);
+    }
+}
+double ApEn(std::vector<double> U, int m, double r) {
+    auto maxdist = [](std::vector<double> x_i, std::vector<double> x_j) -> double {
+        double max_val = 0.0;
+        for (int k = 0; k < x_i.size(); ++k) {
+            double diff = std::abs(x_i[k] - x_j[k]);
+            if (diff > max_val) max_val = diff;
+        }
+        return max_val;
+    };
+
+    auto phi = [&](int m) -> double {
+        int sz = U.size();
+        std::vector<std::vector<double>> x(sz - m + 1, std::vector<double>(m, 0.0));
+        for (int i = 0; i <= sz - m; ++i) {
+            for (int j = 0; j < m; ++j) {
+                x[i][j] = U[i+j];
+            }
+        }
+
+        double C_sum = 0.0;
+        for (int i = 0; i < sz - m + 1; ++i) {
+            int count = 0;
+            for (int j = 0; j < sz - m + 1; ++j) {
+                if (maxdist(x[i], x[j]) <= r) {
+                    count += 1;
+                }
+            }
+            C_sum += std::log(static_cast<double>(count) / (sz - m + 1));
+        }
+
+        return (C_sum / (sz - m + 1));
+    };
+
+    int N = U.size();
+    return std::abs(phi(m + 1) - phi(m));
 }
 
 double calculatMean(const std::vector<double>& data) {
@@ -83,38 +176,79 @@ double SampleEntropy_old(const std::vector<double>& data, int m, double r)
   
 }
 
-double sampleEntropy_new(const std::vector<double>& data, int m, double r){
-    //multiply r by the std
-    double sd = StandardDeviation(data);
-    double err = sd * r;
-    int n = data.size();
-    std::vector<double> last(m), curr(m);
-    int count1 = 0, count2 = 0;
+double sampleEntropy_new(const std::vector<double>& L, int m, double r){
+        // Sample entropy
+    int N = L.size();
+    double B = 0.0;
+    double A = 0.0;
 
-    for (int i = 0; i < n - m; i++) {
-        for (int j = 0; j < m; j++) {
-            last[j] = data[i + j];
-            curr[j] = data[i + j + 1];
+    // Split time series and save all templates of length m
+    std::vector<std::vector<double>> xmi;
+    for (int i = 0; i < N - m; i++) {
+        std::vector<double> tmp;
+        for (int j = i; j < i + m; j++) {
+            tmp.push_back(L[j]);
         }
-
-        int matches1 = 0, matches2 = 0;
-        for (int j = 0; j < m; j++) {
-            for (int k = j + 1; k < m; k++) {
-                if (std::abs(last[j] - last[k]) < err) {
-                    matches1++;
-                }
-                if (std::abs(curr[j] - curr[k]) < err) {
-                    matches2++;
-                }
-            }
-        }
-        count1 += matches1;
-        count2 += matches2;
+        xmi.push_back(tmp);
     }
 
-    double e1 = std::log(static_cast<double>(count1) / (n - m));
-    double e2 = std::log(static_cast<double>(count2) / (n - m - 1));
-    return e1 - e2;
+    std::vector<std::vector<double>> xmj;
+    for (int i = 0; i < N - m + 1; i++) {
+        std::vector<double> tmp;
+        for (int j = i; j < i + m; j++) {
+            tmp.push_back(L[j]);
+        }
+        xmj.push_back(tmp);
+    }
+
+    // Save all matches minus the self-match, compute B
+    for (auto xmii : xmi) {
+        int count = 0;
+        for (auto xmjji : xmj) {
+            bool match = true;
+            for (int i = 0; i < m; i++) {
+                if (std::abs(xmii[i] - xmjji[i]) > r) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                count++;
+            }
+        }
+        B += count - 1;
+    }
+
+    // Similar for computing A
+    m += 1;
+    std::vector<std::vector<double>> xm;
+    for (int i = 0; i < N - m + 1; i++) {
+        std::vector<double> tmp;
+        for (int j = i; j < i + m; j++) {
+            tmp.push_back(L[j]);
+        }
+        xm.push_back(tmp);
+    }
+
+    for (auto xmi : xm) {
+        int count = 0;
+        for (auto xmj : xm) {
+            bool match = true;
+            for (int i = 0; i < m; i++) {
+                if (std::abs(xmi[i] - xmj[i]) > r) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                count++;
+            }
+        }
+        A += count - 1;
+    }
+
+    // Return SampEn
+    return -std::log(A / B);
 }
 
 double permEntropy(const std::vector<double>& data){
