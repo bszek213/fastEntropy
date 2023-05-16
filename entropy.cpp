@@ -3,6 +3,23 @@
 #include <vector>
 #include <cmath>
 // compile with the following command input: "g++ -fPIC -shared -o libEntropy.so entropy.cpp -std=c++17"
+double calculatMean(const std::vector<double>& data) {
+    double sum = 0;
+    for (double x : data) {
+        sum += x;
+    }
+    return sum / data.size();
+}
+
+double StandardDeviation(const std::vector<double>& data) {
+    double mean = calculatMean(data);
+    double sum_of_squares = 0;
+    for (double x : data) {
+        double deviation = x - mean;
+        sum_of_squares += deviation * deviation;
+    }
+    return std::sqrt(sum_of_squares / (data.size() - 1));
+}
 double shannonEntropy(const std::vector<double>& data){
     //Round all data to the tenths place - change this depending on input data
     std::vector<double> dataRound;
@@ -87,62 +104,34 @@ double MSE(std::vector<double>& x, int m, double r, int tau, double& e, int& A, 
     } else {
         e = std::log(B / (double)A);
     }
+    return e;
 }
-double ApEn(std::vector<double> U, int m, double r) {
-    auto maxdist = [](std::vector<double> x_i, std::vector<double> x_j) -> double {
-        double max_val = 0.0;
-        for (int k = 0; k < x_i.size(); ++k) {
-            double diff = std::abs(x_i[k] - x_j[k]);
-            if (diff > max_val) max_val = diff;
-        }
-        return max_val;
-    };
+// Function to calculate the approximate entropy (ApEn)
+double ApEn(const std::vector<double>& data, int m, double r) {
+    int N = data.size();
+    int count = 0;
 
-    auto phi = [&](int m) -> double {
-        int sz = U.size();
-        std::vector<std::vector<double>> x(sz - m + 1, std::vector<double>(m, 0.0));
-        for (int i = 0; i <= sz - m; ++i) {
-            for (int j = 0; j < m; ++j) {
-                x[i][j] = U[i+j];
-            }
-        }
-
-        double C_sum = 0.0;
-        for (int i = 0; i < sz - m + 1; ++i) {
-            int count = 0;
-            for (int j = 0; j < sz - m + 1; ++j) {
-                if (maxdist(x[i], x[j]) <= r) {
-                    count += 1;
+    for (int i = 0; i <= N - m; ++i) {
+        for (int j = i + 1; j <= N - m; ++j) {
+            bool match = true;
+            for (int k = 0; k < m; ++k) {
+                if (std::fabs(data[i + k] - data[j + k]) > r) {
+                    match = false;
+                    break;
                 }
             }
-            C_sum += std::log(static_cast<double>(count) / (sz - m + 1));
+            if (match) {
+                ++count;
+            }
         }
-
-        return (C_sum / (sz - m + 1));
-    };
-
-    int N = U.size();
-    return std::abs(phi(m + 1) - phi(m));
-}
-
-double calculatMean(const std::vector<double>& data) {
-    double sum = 0;
-    for (double x : data) {
-        sum += x;
     }
-    return sum / data.size();
+
+    double ApEn = -std::log(static_cast<double>(count) / (N - m + 1));
+    return ApEn;
 }
 
-double StandardDeviation(const std::vector<double>& data) {
-    double mean = calculatMean(data);
-    double sum_of_squares = 0;
-    for (double x : data) {
-        double deviation = x - mean;
-        sum_of_squares += deviation * deviation;
-    }
-    return std::sqrt(sum_of_squares / (data.size() - 1));
-}
 double SampleEntropy_old(const std::vector<double>& data, int m, double r)
+// got the equation from this source: https://www.codeproject.com/Articles/27030/Approximate-and-Sample-Entropies-Complexity-Metric
 {
     int N = data.size();
     int Cm = 0, Cm1 = 0;
@@ -176,80 +165,53 @@ double SampleEntropy_old(const std::vector<double>& data, int m, double r)
   
 }
 
-double sampleEntropy_new(const std::vector<double>& L, int m, double r){
-        // Sample entropy
-    int N = L.size();
-    double B = 0.0;
-    double A = 0.0;
+// double sampleEntropy(const std::vector<double> data, int m, double r) 
+// {
+//     int n = data.size();
+//     int count1 = 0, count2 = 0;
+//     double maxdist1, maxdist2;
 
-    // Split time series and save all templates of length m
-    std::vector<std::vector<double>> xmi;
-    for (int i = 0; i < N - m; i++) {
-        std::vector<double> tmp;
-        for (int j = i; j < i + m; j++) {
-            tmp.push_back(L[j]);
-        }
-        xmi.push_back(tmp);
-    }
+//     for (int i = 0; i < n - m + 1; i++) {
+//         std::vector<double> temp1(m), temp2(m);
 
-    std::vector<std::vector<double>> xmj;
-    for (int i = 0; i < N - m + 1; i++) {
-        std::vector<double> tmp;
-        for (int j = i; j < i + m; j++) {
-            tmp.push_back(L[j]);
-        }
-        xmj.push_back(tmp);
-    }
+//         for (int j = 0; j < m; j++) {
+//             temp1[j] = data[i + j];
+//             temp2[j] = data[i + j + 1];
+//         }
 
-    // Save all matches minus the self-match, compute B
-    for (auto xmii : xmi) {
-        int count = 0;
-        for (auto xmjji : xmj) {
-            bool match = true;
-            for (int i = 0; i < m; i++) {
-                if (std::abs(xmii[i] - xmjji[i]) > r) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) {
-                count++;
-            }
-        }
-        B += count - 1;
-    }
+//         maxdist1 = maxdist2 = 0;
 
-    // Similar for computing A
-    m += 1;
-    std::vector<std::vector<double>> xm;
-    for (int i = 0; i < N - m + 1; i++) {
-        std::vector<double> tmp;
-        for (int j = i; j < i + m; j++) {
-            tmp.push_back(L[j]);
-        }
-        xm.push_back(tmp);
-    }
+//         for (int j = 0; j < n - m + 1; j++) {
+//             bool match1 = true, match2 = true;
 
-    for (auto xmi : xm) {
-        int count = 0;
-        for (auto xmj : xm) {
-            bool match = true;
-            for (int i = 0; i < m; i++) {
-                if (std::abs(xmi[i] - xmj[i]) > r) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) {
-                count++;
-            }
-        }
-        A += count - 1;
-    }
+//             for (int k = 0; k < m; k++) {
+//                 if (abs(data[j + k] - temp1[k]) > r) {
+//                     match1 = false;
+//                 }
+//                 if (abs(data[j + k] - temp2[k]) > r) {
+//                     match2 = false;
+//                 }
+//             }
 
-    // Return SampEn
-    return -std::log(A / B);
-}
+//             if (match1) {
+//                 count1++;
+//                 if (abs(data[j + m] - temp1[m - 1]) > maxdist1) {
+//                     maxdist1 = abs(data[j + m] - temp1[m - 1]);
+//                 }
+//             }
+
+//             if (match2) {
+//                 count2++;
+//                 if (abs(data[j + m] - temp2[m - 1]) > maxdist2) {
+//                     maxdist2 = abs(data[j + m] - temp2[m - 1]);
+//                 }
+//             }
+//         }
+//     }
+
+//     double sample_entropy = -log((count1 * 1.0) / (count2 * 1.0));
+//     return sample_entropy;
+// }
 
 double permEntropy(const std::vector<double>& data){
     return 0;
@@ -265,6 +227,11 @@ extern "C"
     double calculate_sample_entropy(double* data, int data_length)
     {
         std::vector<double> data_vector(data, data + data_length);
-        return SampleEntropy_old(data_vector,4,0.25);
+        return SampleEntropy_old(data_vector,2,0.2);
+    }
+    double calculate_approximate_entropy(double* data, int data_length)
+    {
+        std::vector<double> data_vector(data, data + data_length);
+        return ApEn(data_vector,2,0.2);
     }
 }
